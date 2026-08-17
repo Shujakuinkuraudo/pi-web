@@ -14,6 +14,17 @@ import { resolveProject, type ProjectInfo } from "./worktree";
 
 export { getAgentDir };
 
+export type SessionListTimings = {
+  cache: "hit" | "miss";
+  catalogueMs: number;
+  projectsMs: number;
+};
+
+export type SessionListResult = {
+  sessions: SessionInfo[];
+  timings: SessionListTimings;
+};
+
 export async function attachSessionProjectInfo(sessions: SessionInfo[]): Promise<SessionInfo[]> {
   const uniqueCwds = [...new Set(sessions.map((s) => s.cwd).filter(Boolean))];
   const projectByCwd = new Map<string, ProjectInfo>();
@@ -42,7 +53,8 @@ export function mergeSessionLists(
   return [...byId.values()].sort((a, b) => b.modified.localeCompare(a.modified));
 }
 
-async function loadAllSessions(): Promise<SessionInfo[]> {
+async function loadAllSessionsWithTimings(): Promise<SessionListResult> {
+  const catalogueStartedAt = performance.now();
   const piSessions: PiSessionInfo[] = await SessionManager.listAll();
   const pathToId = new Map<string, string>();
   for (const s of piSessions) pathToId.set(sessionPathKey(s.path), s.id);
@@ -62,17 +74,36 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       transient: false,
     };
   });
-  return attachSessionProjectInfo(sessions);
+  const catalogueMs = performance.now() - catalogueStartedAt;
+  const projectsStartedAt = performance.now();
+  const enrichedSessions = await attachSessionProjectInfo(sessions);
+  return {
+    sessions: enrichedSessions,
+    timings: {
+      cache: "miss",
+      catalogueMs,
+      projectsMs: performance.now() - projectsStartedAt,
+    },
+  };
 }
 
 export async function listAllSessions(options: { force?: boolean } = {}): Promise<SessionInfo[]> {
+  return (await listAllSessionsWithTimings(options)).sessions;
+}
+
+export async function listAllSessionsWithTimings(
+  options: { force?: boolean } = {},
+): Promise<SessionListResult> {
   if (options.force) invalidateSessionListCache();
   const generation = globalThis.__piSessionListGeneration ?? 0;
 
   // Return cached result if still fresh (avoids re-scanning session files
   // and re-spawning git processes on every page load).
   if (globalThis.__piSessionListCache && Date.now() - globalThis.__piSessionListCache.ts < SESSION_LIST_CACHE_TTL_MS) {
-    return globalThis.__piSessionListCache.data;
+    return {
+      sessions: globalThis.__piSessionListCache.data,
+      timings: { cache: "hit", catalogueMs: 0, projectsMs: 0 },
+    };
   }
 
   // Coalescing dedup: concurrent callers share the same in-flight promise
@@ -81,15 +112,15 @@ export async function listAllSessions(options: { force?: boolean } = {}): Promis
     return globalThis.__piSessionListPromise;
   }
 
-  const loadPromise = loadAllSessions().then((data) => {
+  const loadPromise = loadAllSessionsWithTimings().then((result) => {
     // If a mutation invalidated this scan, make this caller join (or start) a
     // scan for the current generation. Returning the stale result here made a
     // refresh race indistinguishable from a successful refresh.
     if ((globalThis.__piSessionListGeneration ?? 0) !== generation) {
-      return listAllSessions();
+      return listAllSessionsWithTimings();
     }
-    globalThis.__piSessionListCache = { data, ts: Date.now() };
-    return data;
+    globalThis.__piSessionListCache = { data: result.sessions, ts: Date.now() };
+    return result;
   });
   const trackedPromise = loadPromise.finally(() => {
     if (globalThis.__piSessionListPromise === trackedPromise) {
@@ -109,7 +140,7 @@ export async function listAllSessions(options: { force?: boolean } = {}): Promis
 declare global {
   var __piSessionPathCache: Map<string, string> | undefined;
   var __piPathToSessionIdCache: Map<string, string> | undefined;
-  var __piSessionListPromise: Promise<SessionInfo[]> | undefined;
+  var __piSessionListPromise: Promise<SessionListResult> | undefined;
   var __piSessionListPromiseGeneration: number | undefined;
   var __piSessionListGeneration: number | undefined;
   var __piSessionListCache: { data: SessionInfo[]; ts: number } | undefined;
