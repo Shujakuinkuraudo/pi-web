@@ -12,18 +12,18 @@ test("expands process details when a completed turn has no final answer", () => 
   );
 });
 
-test("renders persisted visual-turn timing after every completed turn group", () => {
+test("uses completed group timing for every persisted turn footer", () => {
   assert.match(
     source,
-    /const timingEndIdx = endIdx - 1;/,
+    /getCompletedTurnTiming\(\s*entryTimestamps,\s*userIdx,\s*endIdx,\s*isLiveTail,\s*\)/,
   );
   assert.match(
     source,
-    /if \(finalAssistantIdx === -1\) \{[\s\S]*?if \(endIdx > userIdx \+ 1\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
+    /if \(finalAssistantIdx === -1\) \{[\s\S]*?if \(turnTiming\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
   );
   assert.match(
     source,
-    /for \(let renderIdx = finalAssistantIdx \+ 1; renderIdx < endIdx; renderIdx\+\+\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
+    /for \(let renderIdx = finalAssistantIdx \+ 1; renderIdx < endIdx; renderIdx\+\+\) \{[\s\S]*?if \(turnTiming\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
   );
   assert.doesNotMatch(source, /turnTiming=\{options\.turnTiming\}/);
 });

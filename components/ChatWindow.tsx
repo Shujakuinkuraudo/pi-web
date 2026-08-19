@@ -6,7 +6,7 @@ import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
-import { getTurnTiming } from "@/lib/session-timing";
+import { getCompletedTurnTiming } from "@/lib/session-timing";
 import { MessageView, TurnTimingFooter } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
@@ -796,6 +796,12 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
 
                 const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
                 const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
+                const turnTiming = getCompletedTurnTiming(
+                  entryTimestamps,
+                  userIdx,
+                  endIdx,
+                  isLiveTail,
+                );
                 if (isLiveTail) {
                   for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
                     rendered.push(renderMessage(renderIdx));
@@ -804,17 +810,11 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   continue;
                 }
 
-                const timingEndIdx = endIdx - 1;
-                const turnTiming = getTurnTiming(
-                  entryTimestamps[userIdx],
-                  entryTimestamps[timingEndIdx],
-                );
-
                 if (finalAssistantIdx === -1) {
                   for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
                     rendered.push(renderMessage(renderIdx));
                   }
-                  if (endIdx > userIdx + 1) {
+                  if (turnTiming) {
                     rendered.push(<TurnTimingFooter key={`turn-timing-${userIdx}-${endIdx}`} turnTiming={turnTiming} />);
                   }
                   idx = endIdx;
@@ -885,7 +885,9 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
                   rendered.push(renderMessage(renderIdx));
                 }
-                rendered.push(<TurnTimingFooter key={`turn-timing-${userIdx}-${endIdx}`} turnTiming={turnTiming} />);
+                if (turnTiming) {
+                  rendered.push(<TurnTimingFooter key={`turn-timing-${userIdx}-${endIdx}`} turnTiming={turnTiming} />);
+                }
                 idx = endIdx;
               }
               const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);

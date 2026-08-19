@@ -25,6 +25,19 @@ export function getTurnTiming(
   return { startedAt, endedAt, durationMs: endedAt - startedAt };
 }
 
+export function getCompletedTurnTiming(
+  entryTimestamps: ReadonlyArray<number | null | undefined>,
+  startIndex: number,
+  endExclusiveIndex: number,
+  isLiveTail = false,
+): TurnTiming | undefined {
+  if (isLiveTail || endExclusiveIndex <= startIndex + 1) return undefined;
+  return getTurnTiming(
+    entryTimestamps[startIndex],
+    entryTimestamps[endExclusiveIndex - 1],
+  );
+}
+
 export function formatTurnDuration(durationMs: number): string {
   if (!Number.isFinite(durationMs) || durationMs < 0) return "";
   if (durationMs < 1_000) return "<1s";
