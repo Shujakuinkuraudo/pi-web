@@ -753,8 +753,12 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   }
                 }
                 if (options.showTimestamp !== undefined) showTimestamp = options.showTimestamp;
+                // message_end can reach the UI before the next session reload fills the aligned outer timestamp.
+                const turnEndTimestamp = idx < entryTimestamps.length
+                  ? entryTimestamps[idx]
+                  : (msg.role === "assistant" ? Date.now() : undefined);
                 const turnTiming = msg.role === "assistant"
-                  ? getTurnTiming(msg.timestamp, entryTimestamps[idx])
+                  ? getTurnTiming(msg.timestamp, turnEndTimestamp)
                   : undefined;
                 const view = (
                   <MessageView
