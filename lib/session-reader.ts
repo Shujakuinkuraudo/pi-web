@@ -183,18 +183,18 @@ async function findSessionPathById(sessionId: string): Promise<string | null> {
   const suffix = `_${sessionId}.jsonl`;
   let match: string | undefined;
   for (const projectDir of projectDirs) {
-    if (!projectDir.isDirectory() && !projectDir.isSymbolicLink()) continue;
+    if (!projectDir.isDirectory()) continue;
 
-    let files: string[];
+    let files: Dirent[];
     try {
-      files = await readdir(join(sessionsDir, projectDir.name));
+      files = await readdir(join(sessionsDir, projectDir.name), { withFileTypes: true });
     } catch {
       continue;
     }
 
     for (const file of files) {
-      if (!file.endsWith(suffix)) continue;
-      const candidate = join(sessionsDir, projectDir.name, file);
+      if (!file.isFile() || !file.name.endsWith(suffix)) continue;
+      const candidate = join(sessionsDir, projectDir.name, file.name);
       try {
         if (readSessionHeader(candidate)?.id !== sessionId) continue;
       } catch {

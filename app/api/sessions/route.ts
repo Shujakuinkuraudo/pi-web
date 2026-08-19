@@ -25,10 +25,10 @@ function sessionListServerTiming(timings: SessionListTimings, serializeMs: numbe
 export async function GET(req: Request) {
   try {
     const force = new URL(req.url).searchParams.get("force") === "1";
-    const [persistedResult, runtimeSessions] = await Promise.all([
-      listAllSessionsWithTimings({ force }),
-      attachSessionProjectInfo(getRpcSessionInfos()),
-    ]);
+    const persistedResult = await listAllSessionsWithTimings({ force });
+    // Take runtime snapshots after any invalidation-triggered disk retry so the
+    // response cannot combine a fresh catalogue with pre-retry live state.
+    const runtimeSessions = await attachSessionProjectInfo(getRpcSessionInfos());
     const sessions = mergeSessionLists(persistedResult.sessions, runtimeSessions);
     const serializeStartedAt = performance.now();
     const response = NextResponse.json(

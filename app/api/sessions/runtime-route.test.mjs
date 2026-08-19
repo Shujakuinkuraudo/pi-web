@@ -13,6 +13,7 @@ const jiti = createJiti(import.meta.url, {
   moduleCache: false,
 });
 const { SessionManager } = await jiti.import("@earendil-works/pi-coding-agent");
+const { invalidateSessionListCache } = await jiti.import("@/lib/session-reader");
 const { GET: getSessionList } = await jiti.import("./route.ts");
 const { GET: getSessionDetail } = await jiti.import("./[id]/route.ts");
 const { GET: getSessionState } = await jiti.import("./[id]/state/route.ts");
@@ -68,6 +69,83 @@ test("session listing exposes aggregate Server-Timing stages only when enabled",
   assert.match(warmTiming, /catalogue;dur=0\.0/);
   assert.match(warmTiming, /projects;dur=0\.0/);
   assert.match(warmTiming, /cache;desc="hit"/);
+});
+
+test("session listing takes live state after an invalidated catalogue retry", async (t) => {
+  const originalListAll = SessionManager.listAll;
+  const previousRegistry = globalThis.__piSessions;
+  const previousCache = globalThis.__piSessionListCache;
+  const previousPromise = globalThis.__piSessionListPromise;
+  const previousPromiseGeneration = globalThis.__piSessionListPromiseGeneration;
+  const previousGeneration = globalThis.__piSessionListGeneration;
+  let scans = 0;
+  let markFirstScanStarted;
+  let releaseFirstScan;
+  const firstScanStarted = new Promise((resolve) => {
+    markFirstScanStarted = resolve;
+  });
+  const firstScanGate = new Promise((resolve) => {
+    releaseFirstScan = resolve;
+  });
+  SessionManager.listAll = async () => {
+    scans += 1;
+    if (scans === 1) {
+      markFirstScanStarted();
+      await firstScanGate;
+    }
+    return [];
+  };
+  const runtimeSession = (id) => {
+    const timestamp = "2026-08-19T00:00:00.000Z";
+    const entry = {
+      type: "message",
+      id: `${id}-user`,
+      parentId: null,
+      timestamp,
+      message: { role: "user", content: id },
+    };
+    return {
+      isAlive: () => true,
+      isRunning: () => true,
+      sessionId: id,
+      sessionFile: undefined,
+      cwd: "",
+      inner: {
+        sessionManager: {
+          getHeader: () => ({ type: "session", id, cwd: "", timestamp }),
+          getEntries: () => [entry],
+          getSessionFile: () => undefined,
+          getSessionName: () => undefined,
+        },
+      },
+    };
+  };
+  globalThis.__piSessions = new Map([["old-runtime", runtimeSession("old-runtime")]]);
+  globalThis.__piSessionListCache = undefined;
+  globalThis.__piSessionListPromise = undefined;
+  globalThis.__piSessionListPromiseGeneration = undefined;
+  globalThis.__piSessionListGeneration = 0;
+  t.after(() => {
+    SessionManager.listAll = originalListAll;
+    globalThis.__piSessions = previousRegistry;
+    globalThis.__piSessionListCache = previousCache;
+    globalThis.__piSessionListPromise = previousPromise;
+    globalThis.__piSessionListPromiseGeneration = previousPromiseGeneration;
+    globalThis.__piSessionListGeneration = previousGeneration;
+  });
+
+  const responsePromise = getSessionList(new Request("http://localhost/api/sessions?force=1"));
+  await firstScanStarted;
+  globalThis.__piSessions = new Map([["new-runtime", runtimeSession("new-runtime")]]);
+  invalidateSessionListCache();
+  releaseFirstScan();
+
+  const response = await responsePromise;
+  const body = await response.json();
+  assert.equal(response.status, 200);
+  assert.equal(scans, 2);
+  assert.deepEqual(body.sessions.map((session) => session.id), ["new-runtime"]);
+  assert.deepEqual(body.runningSessionIds, ["new-runtime"]);
 });
 
 test("session reads use the live SessionManager before requiring a JSONL path", () => {
