@@ -12,18 +12,11 @@ test("expands process details when a completed turn has no final answer", () => 
   );
 });
 
-test("uses completed group timing for every persisted turn footer", () => {
+test("passes persisted timing to every assistant message", () => {
   assert.match(
     source,
-    /getCompletedTurnTiming\(\s*entryTimestamps,\s*userIdx,\s*endIdx,\s*isLiveTail,\s*\)/,
+    /const turnTiming = msg\.role === "assistant"\s*\? getTurnTiming\(msg\.timestamp, entryTimestamps\[idx\]\)\s*: undefined;/,
   );
-  assert.match(
-    source,
-    /if \(finalAssistantIdx === -1\) \{[\s\S]*?if \(turnTiming\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
-  );
-  assert.match(
-    source,
-    /for \(let renderIdx = finalAssistantIdx \+ 1; renderIdx < endIdx; renderIdx\+\+\) \{[\s\S]*?if \(turnTiming\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
-  );
-  assert.doesNotMatch(source, /turnTiming=\{options\.turnTiming\}/);
+  assert.match(source, /<MessageView[\s\S]*?turnTiming=\{turnTiming\}/);
+  assert.doesNotMatch(source, /getCompletedTurnTiming|TurnTimingFooter/);
 });
