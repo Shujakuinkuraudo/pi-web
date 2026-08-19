@@ -15,7 +15,7 @@ test("expands process details when a completed turn has no final answer", () => 
 test("passes persisted timing to every assistant message", () => {
   assert.match(
     source,
-    /const turnEndTimestamp = idx < entryTimestamps\.length\s*\? entryTimestamps\[idx\]\s*: \(msg\.role === "assistant" \? Date\.now\(\) : undefined\);\s*const turnTiming = msg\.role === "assistant"\s*\? getTurnTiming\(msg\.timestamp, turnEndTimestamp\)\s*: undefined;/,
+    /const turnTiming = msg\.role === "assistant"\s*\? getTurnTiming\(msg\.timestamp, entryTimestamps\[idx\]\)\s*: undefined;/,
   );
   assert.match(source, /<MessageView[\s\S]*?turnTiming=\{turnTiming\}/);
   assert.doesNotMatch(source, /getCompletedTurnTiming|TurnTimingFooter/);
