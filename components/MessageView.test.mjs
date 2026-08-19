@@ -85,6 +85,27 @@ test("renders partial assistant content before the provider error", () => {
   assert.match(html, /Error: Connection closed/);
 });
 
+test("renders persisted duration and end time beneath a completed turn", () => {
+  const endedAt = Date.now();
+  const html = renderMessage({
+    role: "assistant",
+    provider: "openai",
+    model: "gpt-test",
+    content: [{ type: "text", text: "Done" }],
+    timestamp: endedAt - 30_000,
+  }, {
+    showTimestamp: true,
+    turnTiming: {
+      startedAt: endedAt - 65_000,
+      endedAt,
+      durationMs: 65_000,
+    },
+  });
+
+  assert.match(html, /Took 1m 5s · Ended at/);
+  assert.match(html, /font-variant-numeric:tabular-nums/);
+});
+
 test("renders a complete SDK skill expansion as a compact command", () => {
   const html = renderMessage({
     role: "user",

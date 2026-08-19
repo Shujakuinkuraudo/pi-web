@@ -355,22 +355,25 @@ export function buildSessionContext(
     byId as unknown as Map<string, PiSessionEntry>,
   );
 
-  // Convert the SDK-selected context entries and their IDs together. This keeps
-  // fork/navigation targets aligned while preserving pi's compaction ordering.
+  // Convert the SDK-selected context entries, IDs, and persisted completion
+  // timestamps together so branch navigation and turn timing stay aligned.
   const messages: AgentMessage[] = [];
   const entryIds: string[] = [];
+  const entryTimestamps: Array<number | null> = [];
   for (const entry of contextEntries) {
     const localEntry = entry as unknown as SessionEntry;
     const m = entryToUiMessage(localEntry, options);
     if (m) {
       messages.push(m);
       entryIds.push(localEntry.id);
+      entryTimestamps.push(parseEntryTimestamp(localEntry.timestamp) ?? null);
     }
   }
 
   return {
     messages,
     entryIds,
+    entryTimestamps,
     thinkingLevel: piCtx.thinkingLevel,
     model: piCtx.model,
   };

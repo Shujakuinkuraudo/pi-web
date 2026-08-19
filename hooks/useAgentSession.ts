@@ -41,6 +41,7 @@ export interface SessionData {
   context: {
     messages: AgentMessage[];
     entryIds: string[];
+    entryTimestamps: Array<number | null>;
     thinkingLevel: string;
     model: { provider: string; modelId: string } | null;
   };
@@ -275,6 +276,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [activeLeafId, setActiveLeafId] = useState<string | null>(null);
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [entryIds, setEntryIds] = useState<string[]>([]);
+  const [entryTimestamps, setEntryTimestamps] = useState<Array<number | null>>([]);
   const [streamState, dispatch] = useReducer(streamReducer, INITIAL_STREAMING_STATE);
   const [agentRunning, setAgentRunning] = useState(false);
   const [bashRunning, setBashRunning] = useState(false);
@@ -471,6 +473,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setData(null);
           setActiveLeafId(null);
           setMessages([]);
+          setEntryIds([]);
+          setEntryTimestamps([]);
           setError(null);
         }
         return null;
@@ -482,7 +486,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       setData(d);
       setActiveLeafId(d.leafId);
       setMessages(persistedMessages);
-      setEntryIds(d.context.entryIds ?? []);
+      setEntryIds(d.context.entryIds);
+      setEntryTimestamps(d.context.entryTimestamps);
       setCurrentModelOverride((current) => modelSwitchPendingRef.current ? current : null);
       setError(null);
       if (d.context.thinkingLevel && d.context.thinkingLevel !== "off") {
@@ -530,9 +535,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const url = `/api/sessions/${encodeURIComponent(sid)}/context?${params}`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
+      const d = await res.json() as {
+        context: {
+          messages: AgentMessage[];
+          entryIds: string[];
+          entryTimestamps: Array<number | null>;
+        };
+      };
       setMessages(d.context.messages);
-      setEntryIds(d.context.entryIds ?? []);
+      setEntryIds(d.context.entryIds);
+      setEntryTimestamps(d.context.entryTimestamps);
     } catch (e) {
       console.error("Failed to load context:", e);
     }
@@ -1921,7 +1933,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   return {
     // State
-    data, loading, error, activeLeafId, messages, entryIds, streamState,
+    data, loading, error, activeLeafId, messages, entryIds, entryTimestamps, streamState,
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats,
