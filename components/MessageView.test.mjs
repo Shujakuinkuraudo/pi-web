@@ -10,6 +10,7 @@ const jiti = createJiti(import.meta.url, {
 });
 const {
   MessageView,
+  TurnTimingFooter,
   getTokenEstimateText,
   getToolCallInputText,
   replaceUserMessageText,
@@ -22,6 +23,16 @@ function renderMessage(message, props = {}) {
       I18nProvider,
       null,
       React.createElement(MessageView, { message, ...props }),
+    ),
+  );
+}
+
+function renderTurnTimingFooter(turnTiming) {
+  return renderToStaticMarkup(
+    React.createElement(
+      I18nProvider,
+      null,
+      React.createElement(TurnTimingFooter, { turnTiming }),
     ),
   );
 }
@@ -87,19 +98,10 @@ test("renders partial assistant content before the provider error", () => {
 
 test("renders persisted duration and end time beneath a completed turn", () => {
   const endedAt = Date.now();
-  const html = renderMessage({
-    role: "assistant",
-    provider: "openai",
-    model: "gpt-test",
-    content: [{ type: "text", text: "Done" }],
-    timestamp: endedAt - 30_000,
-  }, {
-    showTimestamp: true,
-    turnTiming: {
-      startedAt: endedAt - 65_000,
-      endedAt,
-      durationMs: 65_000,
-    },
+  const html = renderTurnTimingFooter({
+    startedAt: endedAt - 65_000,
+    endedAt,
+    durationMs: 65_000,
   });
 
   assert.match(html, /Took 1m 5s · Ended at/);

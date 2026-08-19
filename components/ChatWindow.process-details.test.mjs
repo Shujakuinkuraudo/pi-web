@@ -12,13 +12,18 @@ test("expands process details when a completed turn has no final answer", () => 
   );
 });
 
-test("passes persisted visual-turn timing only to the final answer", () => {
+test("renders persisted visual-turn timing after every completed turn group", () => {
   assert.match(
     source,
-    /const turnTiming = getTurnTiming\(\s*entryTimestamps\[userIdx\],\s*entryTimestamps\[finalAssistantIdx\],\s*\)/,
+    /const timingEndIdx = endIdx - 1;/,
   );
   assert.match(
     source,
-    /renderMessage\(finalAssistantIdx, \{\s*messageOverride: finalAnswerMessage,\s*writtenFiles,\s*turnTiming,\s*\}\)/,
+    /if \(finalAssistantIdx === -1\) \{[\s\S]*?if \(endIdx > userIdx \+ 1\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
   );
+  assert.match(
+    source,
+    /for \(let renderIdx = finalAssistantIdx \+ 1; renderIdx < endIdx; renderIdx\+\+\) \{[\s\S]*?<TurnTimingFooter key=\{`turn-timing-\$\{userIdx\}-\$\{endIdx\}`\} turnTiming=\{turnTiming\} \/>/,
+  );
+  assert.doesNotMatch(source, /turnTiming=\{options\.turnTiming\}/);
 });

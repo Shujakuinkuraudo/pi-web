@@ -6,8 +6,8 @@ import { normalizeCustomPanelLines, parseAnsiLine } from "@/lib/ansi";
 import { asBracketedPaste, toTerminalKeyData } from "@/lib/terminal-input";
 import { countToolCallBlocks, getAssistantErrorMessage, getDisplayableAssistantBlocks, splitFinalAssistantBlocks } from "@/lib/message-display";
 import { extractTurnWrittenFiles, type WrittenFile } from "@/lib/turn-written-files";
-import { getTurnTiming, type TurnTiming } from "@/lib/session-timing";
-import { MessageView } from "./MessageView";
+import { getTurnTiming } from "@/lib/session-timing";
+import { MessageView, TurnTimingFooter } from "./MessageView";
 import { ChatInput, type ChatInputHandle } from "./ChatInput";
 import { ChatMinimap, useMessageRefs } from "./ChatMinimap";
 import { ExtensionStatusBar } from "./ExtensionStatusBar";
@@ -730,7 +730,7 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 if (idx === lastUserIdx) { (lastUserMsgRef as { current: HTMLDivElement | null }).current = el; }
               };
 
-              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; writtenFiles?: WrittenFile[]; turnTiming?: TurnTiming } = {}): ReactNode => {
+              const renderMessage = (idx: number, options: { attachRef?: boolean; keyPrefix?: string; messageOverride?: AgentMessage; showTimestamp?: boolean; writtenFiles?: WrittenFile[] } = {}): ReactNode => {
                 const msg = options.messageOverride ?? messages[idx];
                 const prevAssistantEntryId =
                   msg.role === "user" && idx > 0 && messages[idx - 1].role === "assistant"
@@ -771,7 +771,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                     prevTimestamp={idx > 0 ? (messages[idx - 1] as AgentMessage & { timestamp?: number }).timestamp : undefined}
                     sessionId={session?.id ?? sessionIdRef.current ?? undefined}
                     writtenFiles={options.writtenFiles}
-                    turnTiming={options.turnTiming}
                   />
                 );
                 if (!isVisible || options.attachRef === false || currentRefIdx === undefined) return view;
@@ -796,15 +795,6 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                 while (endIdx < messages.length && !isGroupAnchor(messages[endIdx])) endIdx += 1;
 
                 const finalAssistantIdx = findFinalAssistantIndex(messages, userIdx, endIdx);
-
-                if (finalAssistantIdx === -1) {
-                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
-                    rendered.push(renderMessage(renderIdx));
-                  }
-                  idx = endIdx;
-                  continue;
-                }
-
                 const isLiveTail = (sessionBusy || streamState.isStreaming) && endIdx === messages.length && userIdx === lastAnchorIdx;
                 if (isLiveTail) {
                   for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
@@ -814,10 +804,22 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   continue;
                 }
 
+                const timingEndIdx = endIdx - 1;
                 const turnTiming = getTurnTiming(
                   entryTimestamps[userIdx],
-                  entryTimestamps[finalAssistantIdx],
+                  entryTimestamps[timingEndIdx],
                 );
+
+                if (finalAssistantIdx === -1) {
+                  for (let renderIdx = userIdx; renderIdx < endIdx; renderIdx++) {
+                    rendered.push(renderMessage(renderIdx));
+                  }
+                  if (endIdx > userIdx + 1) {
+                    rendered.push(<TurnTimingFooter key={`turn-timing-${userIdx}-${endIdx}`} turnTiming={turnTiming} />);
+                  }
+                  idx = endIdx;
+                  continue;
+                }
                 rendered.push(renderMessage(userIdx));
 
                 const processIndices: number[] = [];
@@ -877,12 +879,13 @@ export function ChatWindow({ session, sessionRunning, newSessionCwd, newSessionD
                   rendered.push(renderMessage(finalAssistantIdx, {
                     messageOverride: finalAnswerMessage,
                     writtenFiles,
-                    turnTiming,
+                    showTimestamp: false,
                   }));
                 }
                 for (let renderIdx = finalAssistantIdx + 1; renderIdx < endIdx; renderIdx++) {
                   rendered.push(renderMessage(renderIdx));
                 }
+                rendered.push(<TurnTimingFooter key={`turn-timing-${userIdx}-${endIdx}`} turnTiming={turnTiming} />);
                 idx = endIdx;
               }
               const { startIndex, hasMore } = getVisibleRenderWindow(rendered.length, visibleCount);

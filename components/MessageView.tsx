@@ -199,7 +199,6 @@ interface Props {
    * final answer text-only.
    */
   writtenFiles?: WrittenFile[];
-  turnTiming?: TurnTiming;
 }
 
 function formatTime(ts?: number, includeSeconds = false): string | null {
@@ -217,6 +216,31 @@ function formatTime(ts?: number, includeSeconds = false): string | null {
   if (isToday) return time;
   const date = d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
   return `${date} ${time}`;
+}
+
+export function TurnTimingFooter({ turnTiming }: { turnTiming?: TurnTiming }) {
+  const { t } = useI18n();
+  const turnEndTime = turnTiming ? formatTime(turnTiming.endedAt, true) : null;
+  if (!turnEndTime || !turnTiming) return null;
+
+  return (
+    <div
+      title={new Date(turnTiming.endedAt).toLocaleString()}
+      style={{
+        marginTop: 2,
+        color: "var(--text-dim)",
+        fontSize: 10,
+        fontVariantNumeric: "tabular-nums",
+        textAlign: "right",
+        overflowWrap: "anywhere",
+      }}
+    >
+      {t("chat.turnTiming", {
+        duration: formatTurnDuration(turnTiming.durationMs),
+        time: turnEndTime,
+      })}
+    </div>
+  );
 }
 
 export function replaceUserMessageText(message: UserMessage, text: string): UserMessage {
@@ -252,12 +276,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles, turnTiming }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId, writtenFiles }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} writtenFiles={writtenFiles} turnTiming={turnTiming} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} writtenFiles={writtenFiles} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -288,10 +312,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.onEditContent === next.onEditContent
     && prev.showTimestamp === next.showTimestamp
     && prev.prevTimestamp === next.prevTimestamp
-    && prev.sessionId === next.sessionId
-    && prev.turnTiming?.startedAt === next.turnTiming?.startedAt
-    && prev.turnTiming?.endedAt === next.turnTiming?.endedAt
-    && prev.turnTiming?.durationMs === next.turnTiming?.durationMs;
+    && prev.sessionId === next.sessionId;
 });
 
 function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent }: {
@@ -587,7 +608,6 @@ function AssistantMessageView({
   sessionId,
   entryId,
   writtenFiles,
-  turnTiming,
 }: {
   message: AssistantMessage;
   isStreaming?: boolean;
@@ -600,11 +620,9 @@ function AssistantMessageView({
   sessionId?: string;
   entryId?: string;
   writtenFiles?: WrittenFile[];
-  turnTiming?: TurnTiming;
 }) {
   const { t } = useI18n();
-  const time = showTimestamp && !turnTiming ? formatTime(message.timestamp) : null;
-  const turnEndTime = turnTiming ? formatTime(turnTiming.endedAt, true) : null;
+  const time = showTimestamp ? formatTime(message.timestamp) : null;
   const blockItems = useMemo(() => (message.content ?? [])
     .map((block, originalIndex) => ({ block, originalIndex }))
     .filter(({ block }) => !isEmptyThinkingBlock(block, { isStreaming })), [message.content, isStreaming]);
@@ -853,25 +871,6 @@ function AssistantMessageView({
           <span style={{ fontSize: 10, color: "var(--text-dim)", marginLeft: "auto" }}>{time}</span>
         )}
       </div>
-
-      {turnEndTime && turnTiming && !isStreaming && (
-        <div
-          title={new Date(turnTiming.endedAt).toLocaleString()}
-          style={{
-            marginTop: 2,
-            color: "var(--text-dim)",
-            fontSize: 10,
-            fontVariantNumeric: "tabular-nums",
-            textAlign: "right",
-            overflowWrap: "anywhere",
-          }}
-        >
-          {t("chat.turnTiming", {
-            duration: formatTurnDuration(turnTiming.durationMs),
-            time: turnEndTime,
-          })}
-        </div>
-      )}
     </div>
   );
 }
