@@ -109,6 +109,17 @@ function readSessionRelationEntries(filePath: string): SessionEntry[] {
   ];
 }
 
+export type SessionListTimings = {
+  cache: "hit" | "miss";
+  catalogueMs: number;
+  projectsMs: number;
+};
+
+export type SessionListResult = {
+  sessions: SessionInfo[];
+  timings: SessionListTimings;
+};
+
 export async function attachSessionProjectInfo(sessions: SessionInfo[]): Promise<SessionInfo[]> {
   const uniqueCwds = [...new Set(sessions.map((s) => s.cwd).filter(Boolean))];
   const projectByCwd = new Map<string, ProjectInfo>();
@@ -139,7 +150,8 @@ export function mergeSessionLists(
   return [...byId.values()].sort((a, b) => b.modified.localeCompare(a.modified));
 }
 
-async function loadAllSessions(): Promise<SessionInfo[]> {
+async function loadAllSessionsWithTimings(): Promise<SessionListResult> {
+  const catalogueStartedAt = performance.now();
   const piSessions: PiSessionInfo[] = await SessionManager.listAll();
   const pathToId = new Map<string, string>();
   for (const s of piSessions) pathToId.set(sessionPathKey(s.path), s.id);
@@ -171,17 +183,36 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
       transient: false,
     };
   });
-  return attachSessionProjectInfo(sessions);
+  const catalogueMs = performance.now() - catalogueStartedAt;
+  const projectsStartedAt = performance.now();
+  const enrichedSessions = await attachSessionProjectInfo(sessions);
+  return {
+    sessions: enrichedSessions,
+    timings: {
+      cache: "miss",
+      catalogueMs,
+      projectsMs: performance.now() - projectsStartedAt,
+    },
+  };
 }
 
 export async function listAllSessions(options: { force?: boolean } = {}): Promise<SessionInfo[]> {
+  return (await listAllSessionsWithTimings(options)).sessions;
+}
+
+export async function listAllSessionsWithTimings(
+  options: { force?: boolean } = {},
+): Promise<SessionListResult> {
   if (options.force) invalidateSessionListCache();
   const generation = globalThis.__piSessionListGeneration ?? 0;
 
   // Return cached result if still fresh (avoids re-scanning session files
   // and re-spawning git processes on every page load).
   if (globalThis.__piSessionListCache && Date.now() - globalThis.__piSessionListCache.ts < SESSION_LIST_CACHE_TTL_MS) {
-    return globalThis.__piSessionListCache.data;
+    return {
+      sessions: globalThis.__piSessionListCache.data,
+      timings: { cache: "hit", catalogueMs: 0, projectsMs: 0 },
+    };
   }
 
   // Coalescing dedup: concurrent callers share the same in-flight promise
@@ -190,15 +221,15 @@ export async function listAllSessions(options: { force?: boolean } = {}): Promis
     return globalThis.__piSessionListPromise;
   }
 
-  const loadPromise = loadAllSessions().then((data) => {
+  const loadPromise = loadAllSessionsWithTimings().then((result) => {
     // If a mutation invalidated this scan, make this caller join (or start) a
     // scan for the current generation. Returning the stale result here made a
     // refresh race indistinguishable from a successful refresh.
     if ((globalThis.__piSessionListGeneration ?? 0) !== generation) {
-      return listAllSessions();
+      return listAllSessionsWithTimings();
     }
-    globalThis.__piSessionListCache = { data, ts: Date.now() };
-    return data;
+    globalThis.__piSessionListCache = { data: result.sessions, ts: Date.now() };
+    return result;
   });
   const trackedPromise = loadPromise.finally(() => {
     if (globalThis.__piSessionListPromise === trackedPromise) {
@@ -218,7 +249,7 @@ export async function listAllSessions(options: { force?: boolean } = {}): Promis
 declare global {
   var __piSessionPathCache: Map<string, string> | undefined;
   var __piPathToSessionIdCache: Map<string, string> | undefined;
-  var __piSessionListPromise: Promise<SessionInfo[]> | undefined;
+  var __piSessionListPromise: Promise<SessionListResult> | undefined;
   var __piSessionListPromiseGeneration: number | undefined;
   var __piSessionListGeneration: number | undefined;
   var __piSessionListCache: { data: SessionInfo[]; ts: number } | undefined;
@@ -261,24 +292,24 @@ async function findSessionPathById(sessionId: string): Promise<string | null> {
   const suffix = `_${sessionId}.jsonl`;
   let match: string | undefined;
   for (const projectDir of projectDirs) {
-    if (!projectDir.isDirectory() && !projectDir.isSymbolicLink()) continue;
+    if (!projectDir.isDirectory()) continue;
     const projectPath = resolvePathWithinDefaultSessions(
       join(sessionsDir, projectDir.name),
       sessionsDir,
     );
     if (!projectPath) continue;
 
-    let files: string[];
+    let files: Dirent[];
     try {
-      files = await readdir(projectPath);
+      files = await readdir(projectPath, { withFileTypes: true });
     } catch {
       continue;
     }
 
     for (const file of files) {
-      if (!file.endsWith(suffix)) continue;
+      if (!file.isFile() || !file.name.endsWith(suffix)) continue;
       const candidate = resolvePathWithinDefaultSessions(
-        join(projectPath, file),
+        join(projectPath, file.name),
         sessionsDir,
       );
       if (!candidate) continue;
@@ -459,22 +490,25 @@ export function buildSessionContext(
     byId as unknown as Map<string, PiSessionEntry>,
   );
 
-  // Convert the SDK-selected context entries and their IDs together. This keeps
-  // fork/navigation targets aligned while preserving pi's compaction ordering.
+  // Convert the SDK-selected context entries, IDs, and persisted completion
+  // timestamps together so branch navigation and turn timing stay aligned.
   const messages: AgentMessage[] = [];
   const entryIds: string[] = [];
+  const entryTimestamps: Array<number | null> = [];
   for (const entry of contextEntries) {
     const localEntry = entry as unknown as SessionEntry;
     const m = entryToUiMessage(localEntry, options);
     if (m) {
       messages.push(m);
       entryIds.push(localEntry.id);
+      entryTimestamps.push(parseEntryTimestamp(localEntry.timestamp) ?? null);
     }
   }
 
   return {
     messages,
     entryIds,
+    entryTimestamps,
     oldestEntryId: sliced[0]?.id ?? null,
     hasMore,
     ...getSessionSettings(entries, leafId),

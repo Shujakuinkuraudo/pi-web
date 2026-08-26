@@ -265,6 +265,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.expandProcess": "展开处理详情",
     "chat.filesWritten": "改动的文件",
     "chat.openWrittenFile": "打开 {name}",
+    "chat.turnTiming": "耗时 {duration} · 结束于 {time}",
     "chat.loadEarlier": "向上滚动以加载更早的消息",
     "chat.extensionRequest": "扩展请求",
     "chat.cancel": "取消",
