@@ -704,8 +704,9 @@ export function AppShell() {
     }
     activeNewSessionDraftKeyRef.current = null;
     // Adopt an explicitly selected session before the sidebar reports its cwd.
+    // Initial URL restoration must preserve terminal tabs restored concurrently.
     const projectKey = workspaceKeyOf(session);
-    if (activeProjectKeyRef.current !== projectKey) {
+    if (!isRestore && activeProjectKeyRef.current !== projectKey) {
       setFileTabs([]);
       if (!activeFileTabId || activeFileTabId.startsWith("file:")) {
         setActiveFileTabId(null);

@@ -189,7 +189,7 @@ try {
       for (const name of ["workspace-a", "workspace-b"]) {
         await page.getByRole("button", { name: `Terminate terminal ${name}`, exact: true }).click();
       }
-      await page.locator(".terminal-panel").waitFor({ state: "detached" });
+      await page.waitForFunction(() => document.querySelectorAll(".terminal-panel").length === 0);
       for (const terminalId of created) assert.equal((await fetch(`${base}/api/terminal/${terminalId}`)).status, 404);
       assert.deepEqual(errors, []);
       console.log(`PASS ${viewport.width}: real shell, files, sessions, refresh, reconnect, restart, exit, close during creation, workspace isolation`);
