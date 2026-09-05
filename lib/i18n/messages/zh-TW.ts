@@ -290,6 +290,7 @@ export const zhTWLocale: LocalePlugin = {
     "chat.toolCalls": "次工具呼叫",
     "chat.collapseProcess": "收起處理詳細資料",
     "chat.expandProcess": "展開處理詳細資料",
+    "chat.turnTiming": "耗時 {duration} · 結束於 {time}",
     "chat.filesWritten": "已變更的檔案",
     "chat.openWrittenFile": "開啟 {name}",
     "chat.loadEarlier": "向上捲動以載入較早的訊息",

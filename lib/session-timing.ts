@@ -4,6 +4,40 @@ interface TimingEntry {
   message?: { role?: string };
 }
 
+export interface TurnTiming {
+  startedAt: number;
+  endedAt: number;
+  durationMs: number;
+}
+
+export function getTurnTiming(
+  startedAt: number | null | undefined,
+  endedAt: number | null | undefined,
+): TurnTiming | undefined {
+  if (
+    typeof startedAt !== "number"
+    || typeof endedAt !== "number"
+    || !Number.isFinite(startedAt)
+    || !Number.isFinite(endedAt)
+    || endedAt < startedAt
+  ) return undefined;
+
+  return { startedAt, endedAt, durationMs: endedAt - startedAt };
+}
+
+export function formatTurnDuration(durationMs: number): string {
+  if (!Number.isFinite(durationMs) || durationMs < 0) return "";
+  if (durationMs < 1_000) return "<1s";
+
+  const totalSeconds = Math.floor(durationMs / 1_000);
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 /**
  * Estimate active wall-clock time from the append-only session log.
  *

@@ -11,3 +11,12 @@ test("expands process details when a completed turn has no final answer", () => 
     /<ProcessDetailsGroup[\s\S]*?defaultExpanded=\{!finalAnswerMessage\}/,
   );
 });
+
+test("passes persisted timing to every assistant message", () => {
+  assert.match(
+    source,
+    /const turnTiming = msg\.role === "assistant"\s*\? getTurnTiming\(msg\.timestamp, entryTimestamps\[idx\]\)\s*: undefined;/,
+  );
+  assert.match(source, /<MessageView[\s\S]*?turnTiming=\{turnTiming\}/);
+  assert.doesNotMatch(source, /getCompletedTurnTiming|TurnTimingFooter/);
+});

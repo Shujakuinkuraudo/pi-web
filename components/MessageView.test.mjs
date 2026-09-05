@@ -282,3 +282,61 @@ test("renders custom-message images as buttons that open a larger preview", () =
   assert.match(html, /<button[^>]+aria-label="Preview image"[^>]*>/);
   assert.match(html, /<img[^>]+src="data:image\/png;base64,YWJj"/);
 });
+
+test("renders persisted timing inline after usage for an intermediate tool assistant turn", () => {
+  const endedAt = Date.now();
+  const html = renderMessage({
+    role: "assistant",
+    provider: "openai",
+    model: "gpt-test",
+    content: [{
+      type: "toolCall",
+      toolCallId: "call-timing-1",
+      toolName: "bash",
+      input: { command: "pwd" },
+    }],
+    usage: {
+      input: 1_072,
+      output: 162,
+      cacheRead: 240_256,
+      cacheWrite: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0.0521 },
+    },
+  }, {
+    turnTiming: {
+      startedAt: endedAt - 65_000,
+      endedAt,
+      durationMs: 65_000,
+    },
+  });
+
+  assert.match(html, /1,072 in · 162 out · 240,256 cache R · \$0\.0521<span[^>]*> · Took 1m 5s · Ended at/);
+  assert.match(html, /font-variant-numeric:tabular-nums/);
+});
+
+test("suppresses persisted timing while the assistant message streams", () => {
+  const endedAt = Date.now();
+  const html = renderMessage({
+    role: "assistant",
+    provider: "openai",
+    model: "gpt-test",
+    content: [{ type: "text", text: "Partial" }],
+    usage: {
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      cacheWrite: 0,
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+    },
+  }, {
+    isStreaming: true,
+    turnTiming: {
+      startedAt: endedAt - 1_000,
+      endedAt,
+      durationMs: 1_000,
+    },
+  });
+
+  assert.doesNotMatch(html, /Took 1s/);
+  assert.doesNotMatch(html, /1 in · 1 out/);
+});

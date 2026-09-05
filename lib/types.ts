@@ -351,6 +351,7 @@ export interface SessionContext {
   entryIds: string[]; // parallel to messages — the session entry id for each message
   oldestEntryId: string | null;
   hasMore: boolean;
+  entryTimestamps: Array<number | null>; // parallel JSONL entry completion timestamps
   thinkingLevel: string;
   model: { provider: string; modelId: string } | null;
 }
