@@ -4,6 +4,7 @@ import {
   attachSessionProjectInfo,
   getSessionListVersion,
   listAllSessionsWithTimings,
+  listSessionSummariesWithTimings,
   mergeSessionLists,
   type SessionListTimings,
 } from "@/lib/session-reader";
@@ -12,6 +13,8 @@ import {
   getRpcSessionInfos,
   getRunningRpcSessionIds,
 } from "@/lib/rpc-manager";
+
+import { startServerPerf } from "@/lib/perf";
 
 export const dynamic = "force-dynamic";
 
@@ -29,15 +32,21 @@ function sessionListServerTiming(timings: SessionListTimings, serializeMs: numbe
 }
 
 export async function GET(req: Request) {
+  const perf = startServerPerf("GET /api/sessions");
   try {
-    const force = new URL(req.url).searchParams.get("force") === "1";
-    const persistedSessionsPromise = listAllSessionsWithTimings({ force });
+    const searchParams = new URL(req.url).searchParams;
+    const force = searchParams.get("force") === "1";
+    const summary = searchParams.get("summary") === "1";
+    const persistedSessionsPromise = summary
+      ? listSessionSummariesWithTimings()
+      : listAllSessionsWithTimings({ force });
     // A mutation during the scan must remain visible to the next poll.
     const sessionListVersion = getSessionListVersion();
     const persistedResult = await persistedSessionsPromise;
     // Snapshot runtime state after any invalidation-triggered disk retry.
     const runtimeSessions = await attachSessionProjectInfo(getRpcSessionInfos());
     const sessions = mergeSessionLists(persistedResult.sessions, runtimeSessions);
+    perf?.span("scan+projects");
     const serializeStartedAt = performance.now();
     const response = jsonResponse(
       req,
@@ -49,8 +58,9 @@ export async function GET(req: Request) {
       },
       { headers: { "Cache-Control": "no-store" } },
     );
+    perf?.attach(response);
     if (process.env.PI_WEB_SERVER_TIMING === "1") {
-      response.headers.set(
+      response.headers.append(
         "Server-Timing",
         sessionListServerTiming(persistedResult.timings, performance.now() - serializeStartedAt),
       );
