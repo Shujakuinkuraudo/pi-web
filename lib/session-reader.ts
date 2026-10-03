@@ -152,6 +152,17 @@ function readSessionRelationEntries(filePath: string): SessionEntry[] {
   ];
 }
 
+export type SessionListTimings = {
+  cache: "hit" | "miss";
+  catalogueMs: number;
+  projectsMs: number;
+};
+
+export type SessionListResult = {
+  sessions: SessionInfo[];
+  timings: SessionListTimings;
+};
+
 export async function attachSessionProjectInfo(sessions: SessionInfo[]): Promise<SessionInfo[]> {
   const uniqueCwds = [...new Set(sessions.map((s) => s.cwd).filter(Boolean))];
   const projectByCwd = new Map<string, ProjectInfo>();
@@ -234,14 +245,15 @@ function mapScannedSession(
   };
 }
 
-async function buildSessionList(scanned: ScannedSessionInfo[]): Promise<SessionInfo[]> {
-  const pathToId = new Map<string, string>();
-  for (const session of scanned) pathToId.set(sessionPathKey(session.path), session.id);
-  return attachSessionProjectInfo(scanned.map((session) => mapScannedSession(session, pathToId)));
-}
-
-async function loadAllSessions(): Promise<SessionInfo[]> {
-  return buildSessionList(await listSessionsIncremental());
+async function loadAllSessionsWithTimings(deferDetails = false): Promise<SessionListResult> {
+  const started = performance.now();
+  const scanned = await listSessionsIncremental({ deferDetails });
+  const pathToId = new Map(scanned.map((session) => [sessionPathKey(session.path), session.id]));
+  const rows = scanned.map((session) => mapScannedSession(session, pathToId));
+  const catalogueMs = performance.now() - started;
+  const projectsStarted = performance.now();
+  const sessions = await attachSessionProjectInfo(rows);
+  return { sessions, timings: { cache: "miss", catalogueMs, projectsMs: performance.now() - projectsStarted } };
 }
 
 /**
@@ -250,10 +262,18 @@ async function loadAllSessions(): Promise<SessionInfo[]> {
  * counts, names, and first messages afterwards.
  */
 export async function listSessionSummaries(): Promise<SessionInfo[]> {
-  return buildSessionList(await listSessionsIncremental({ deferDetails: true }));
+  return (await listSessionSummariesWithTimings()).sessions;
+}
+
+export async function listSessionSummariesWithTimings(): Promise<SessionListResult> {
+  return loadAllSessionsWithTimings(true);
 }
 
 export async function listAllSessions(options: { force?: boolean; allowStale?: boolean } = {}): Promise<SessionInfo[]> {
+  return (await listAllSessionsWithTimings(options)).sessions;
+}
+
+export async function listAllSessionsWithTimings(options: { force?: boolean; allowStale?: boolean } = {}): Promise<SessionListResult> {
   if (options.force) invalidateSessionListCache();
   const generation = globalThis.__piSessionListGeneration ?? 0;
 
@@ -261,7 +281,7 @@ export async function listAllSessions(options: { force?: boolean; allowStale?: b
   // and re-spawning git processes on every page load).
   const cache = globalThis.__piSessionListCache;
   if (cache && cache.generation === generation && Date.now() - cache.ts < SESSION_LIST_CACHE_TTL_MS) {
-    return cache.data;
+    return { sessions: cache.data, timings: { cache: "hit", catalogueMs: 0, projectsMs: 0 } };
   }
 
   // Callers that only need session metadata — mapping search hits onto sidebar
@@ -271,7 +291,7 @@ export async function listAllSessions(options: { force?: boolean; allowStale?: b
   // activity rather than by anything the caller did.
   if (options.allowStale && cache) {
     void listAllSessions().catch(() => undefined);
-    return cache.data;
+    return { sessions: cache.data, timings: { cache: "hit", catalogueMs: 0, projectsMs: 0 } };
   }
 
   // Coalescing dedup: concurrent callers share the same in-flight promise
@@ -280,15 +300,15 @@ export async function listAllSessions(options: { force?: boolean; allowStale?: b
     return globalThis.__piSessionListPromise;
   }
 
-  const loadPromise = loadAllSessions().then((data) => {
+  const loadPromise = loadAllSessionsWithTimings().then((result) => {
     // If a mutation invalidated this scan, make this caller join (or start) a
     // scan for the current generation. Returning the stale result here made a
     // refresh race indistinguishable from a successful refresh.
     if ((globalThis.__piSessionListGeneration ?? 0) !== generation) {
-      return listAllSessions();
+      return listAllSessionsWithTimings();
     }
-    globalThis.__piSessionListCache = { data, ts: Date.now(), generation };
-    return data;
+    globalThis.__piSessionListCache = { data: result.sessions, ts: Date.now(), generation };
+    return result;
   });
   const trackedPromise = loadPromise.finally(() => {
     if (globalThis.__piSessionListPromise === trackedPromise) {
@@ -308,7 +328,7 @@ export async function listAllSessions(options: { force?: boolean; allowStale?: b
 declare global {
   var __piSessionPathCache: Map<string, string> | undefined;
   var __piPathToSessionIdCache: Map<string, string> | undefined;
-  var __piSessionListPromise: Promise<SessionInfo[]> | undefined;
+  var __piSessionListPromise: Promise<SessionListResult> | undefined;
   var __piSessionListPromiseGeneration: number | undefined;
   var __piSessionListGeneration: number | undefined;
   var __piSessionListCache: { data: SessionInfo[]; ts: number; generation: number } | undefined;
@@ -351,24 +371,24 @@ async function findSessionPathById(sessionId: string): Promise<string | null> {
   const suffix = `_${sessionId}.jsonl`;
   let match: string | undefined;
   for (const projectDir of projectDirs) {
-    if (!projectDir.isDirectory() && !projectDir.isSymbolicLink()) continue;
+    if (!projectDir.isDirectory()) continue;
     const projectPath = resolvePathWithinDefaultSessions(
       join(sessionsDir, projectDir.name),
       sessionsDir,
     );
     if (!projectPath) continue;
 
-    let files: string[];
+    let files: Dirent[];
     try {
-      files = await readdir(projectPath);
+      files = await readdir(projectPath, { withFileTypes: true });
     } catch {
       continue;
     }
 
     for (const file of files) {
-      if (!file.endsWith(suffix)) continue;
+      if (!file.isFile() || !file.name.endsWith(suffix)) continue;
       const candidate = resolvePathWithinDefaultSessions(
-        join(projectPath, file),
+        join(projectPath, file.name),
         sessionsDir,
       );
       if (!candidate) continue;
@@ -678,20 +698,23 @@ export function buildSessionContext(
   );
   const hasMore = Boolean(tail && tail > 0 && sliced[0]?.parentId);
 
-  // Convert messages and their IDs together to keep fork/navigation targets aligned.
+  // Keep messages, their IDs and persisted completion timestamps aligned.
   const messages: AgentMessage[] = [];
   const entryIds: string[] = [];
+  const entryTimestamps: Array<number | null> = [];
   for (const entry of sliced) {
     const m = entryToUiMessage(entry, options);
     if (m) {
       messages.push(m);
       entryIds.push(entry.id);
+      entryTimestamps.push(parseEntryTimestamp(entry.timestamp) ?? null);
     }
   }
 
   return {
     messages,
     entryIds,
+    entryTimestamps,
     oldestEntryId: sliced[0]?.id ?? null,
     hasMore,
     ...getSessionSettings(entries, leafId),

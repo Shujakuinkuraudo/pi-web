@@ -65,6 +65,7 @@ export interface SessionData {
   context: {
     messages: AgentMessage[];
     entryIds: string[];
+    entryTimestamps: Array<number | null>;
     oldestEntryId: string | null;
     hasMore: boolean;
     thinkingLevel: string;
@@ -328,6 +329,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const [messages, setMessages] = useState<AgentMessage[]>([]);
   const [activeToolResults, setActiveToolResults] = useState<Map<string, ToolResultMessage>>(new Map());
   const [entryIds, setEntryIds] = useState<string[]>([]);
+  const [entryTimestamps, setEntryTimestamps] = useState<Array<number | null>>([]);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [hasEarlierMessages, setHasEarlierMessages] = useState(false);
   const [streamState, dispatch] = useReducer(streamReducer, INITIAL_STREAMING_STATE);
@@ -425,6 +427,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   const dataRef = useRef<SessionData | null>(null);
   const messagesRef = useRef<AgentMessage[]>([]);
   const entryIdsRef = useRef<string[]>([]);
+  const entryTimestampsRef = useRef<Array<number | null>>([]);
   const activeLeafIdRef = useRef<string | null>(null);
   const historyCursorRef = useRef<string | null>(null);
   const hasEarlierMessagesRef = useRef(false);
@@ -433,6 +436,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
   dataRef.current = data;
   messagesRef.current = messages;
   entryIdsRef.current = entryIds;
+  entryTimestampsRef.current = entryTimestamps;
   activeLeafIdRef.current = activeLeafId;
   historyCursorRef.current = historyCursor;
   hasEarlierMessagesRef.current = hasEarlierMessages;
@@ -594,6 +598,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           setActiveLeafId(null);
           setMessages([]);
           setEntryIds([]);
+          setEntryTimestamps([]);
           setHistoryCursor(null);
           setHasEarlierMessages(false);
           setError(null);
@@ -622,6 +627,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
               ...d.context,
               messages: messagesRef.current,
               entryIds: entryIdsRef.current,
+              entryTimestamps: entryTimestampsRef.current,
               oldestEntryId: historyCursorRef.current,
               hasMore: hasEarlierMessagesRef.current,
             },
@@ -636,6 +642,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           revision: d.snapshotRevision!,
           messages: messagesRef.current,
           entryIds: entryIdsRef.current,
+          entryTimestamps: entryTimestampsRef.current,
           leafId: d.leafId,
           oldestEntryId: historyCursorRef.current,
           hasMore: hasEarlierMessagesRef.current,
@@ -649,6 +656,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       } else {
         setMessages(persistedMessages);
         setEntryIds(d.context.entryIds ?? []);
+        setEntryTimestamps(d.context.entryTimestamps ?? []);
         setHistoryCursor(d.context.oldestEntryId);
         setHasEarlierMessages(d.context.hasMore);
       }
@@ -665,6 +673,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           revision: d.snapshotRevision,
           messages: persistedMessages,
           entryIds: d.context.entryIds ?? [],
+          entryTimestamps: d.context.entryTimestamps ?? [],
           leafId: d.leafId,
           oldestEntryId: d.context.oldestEntryId,
           hasMore: d.context.hasMore,
@@ -746,6 +755,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           ...prev.context,
           messages: [...d.context.messages, ...prev.context.messages],
           entryIds: [...d.context.entryIds, ...prev.context.entryIds],
+          entryTimestamps: [...d.context.entryTimestamps, ...prev.context.entryTimestamps],
           oldestEntryId: d.context.oldestEntryId,
           hasMore: d.context.hasMore,
         } : d.context;
@@ -755,9 +765,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         // Older page: prepend so scroll position stays anchored.
         setMessages((prev) => [...d.context.messages, ...prev]);
         setEntryIds((prev) => [...d.context.entryIds, ...prev]);
+        setEntryTimestamps((prev) => [...d.context.entryTimestamps, ...prev]);
       } else {
         setMessages(d.context.messages);
         setEntryIds(d.context.entryIds ?? []);
+        setEntryTimestamps(d.context.entryTimestamps ?? []);
       }
       return d.context;
     } catch (e) {
@@ -2413,6 +2425,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
           context: {
             messages: cached.messages,
             entryIds: cached.entryIds,
+            entryTimestamps: cached.entryTimestamps ?? [],
             oldestEntryId: cached.oldestEntryId,
             hasMore: cached.hasMore,
             thinkingLevel: cached.thinkingLevel,
@@ -2423,6 +2436,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         setActiveLeafId(cached.leafId);
         setMessages(cached.messages);
         setEntryIds(cached.entryIds);
+        setEntryTimestamps(cached.entryTimestamps ?? []);
         setHistoryCursor(cached.oldestEntryId);
         setHasEarlierMessages(cached.hasMore);
         setError(null);
@@ -2484,6 +2498,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
             revision: currentData.snapshotRevision,
             messages: messagesRef.current,
             entryIds: entryIdsRef.current,
+            entryTimestamps: entryTimestampsRef.current,
             leafId: activeLeafIdRef.current,
             oldestEntryId: historyCursorRef.current,
             hasMore: hasEarlierMessagesRef.current,
@@ -2636,7 +2651,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   return {
     // State
-    data, loading, error, activeLeafId, messages, activeToolResults, entryIds, historyCursor, hasEarlierMessages, streamState,
+    data, loading, error, activeLeafId, messages, activeToolResults, entryIds, entryTimestamps, historyCursor, hasEarlierMessages, streamState,
     agentRunning, modelNames, modelList, modelError, modelScopeWarnings, modelThinkingLevels, modelThinkingLevelMaps, newSessionModel, toolPreset, thinkingLevel,
     retryInfo, contextUsage, systemPrompt, forkingEntryId,
     isCompacting, compactError, compactResult, currentModel, displayModel, modelSwitching, sessionStats, autoCompactionEnabled,

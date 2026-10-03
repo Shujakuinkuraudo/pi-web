@@ -368,6 +368,7 @@ export const zhCNLocale: LocalePlugin = {
     "chat.toolCalls": "次工具调用",
     "chat.collapseProcess": "收起处理详情",
     "chat.expandProcess": "展开处理详情",
+    "chat.turnTiming": "耗时 {duration} · 结束于 {time}",
     "chat.filesWritten": "改动的文件",
     "chat.openWrittenFile": "打开 {name}",
     "chat.loadEarlier": "向上滚动以加载更早的消息",

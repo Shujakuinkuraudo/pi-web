@@ -30,3 +30,8 @@ test("resets process details when the turn gains or loses its final answer", () 
     /<ProcessDetailsGroup key=\{finalAnswerMessage \? "answered" : "unanswered"\}[\s\S]*?defaultExpanded=\{!finalAnswerMessage\}/,
   );
 });
+
+test("passes persisted completion timestamps to assistant messages", () => {
+  assert.match(source, /const turnTiming = msg\.role === "assistant"\s*\? getTurnTiming\(msg\.timestamp, entryTimestamps\[idx\]\)\s*: undefined;/);
+  assert.match(source, /<MessageView[\s\S]*?turnTiming=\{turnTiming\}/);
+});

@@ -19,6 +19,7 @@ export interface SessionViewSnapshot {
 	revision: string;
 	messages: AgentMessage[];
 	entryIds: string[];
+	entryTimestamps?: Array<number | null>;
 	leafId: string | null;
 	/** Oldest entry id currently loaded — the pagination cursor. */
 	oldestEntryId: string | null;
