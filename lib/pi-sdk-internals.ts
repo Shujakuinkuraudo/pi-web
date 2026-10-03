@@ -10,7 +10,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { readFileSync, realpathSync } from "node:fs";
 import { findPackageJSON } from "node:module";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 // MCP support the SDK ships but its package does not export (ADR 0006): the
@@ -327,8 +327,13 @@ function resolveMcpClientEntry(packageDir: string): string {
 }
 
 function resolvedSdkPackageDir(cwd: string): string {
-  // Next.js runs the server with the project as cwd, and resolves externals
-  // from its build output inside the project, so both find the same package.
+  // In the server, cwd is the project root and getPackageDir() came from the
+  // SDK import already resolved by the active private-core hook. findPackageJSON
+  // from cwd bypasses that hook and incorrectly sees the public build package.
+  if (sameRealPath(resolve(cwd), resolve(process.cwd()))) return realpathSync(getPackageDir());
+
+  // A separate cwd is supplied only by tests, where ordinary resolution must
+  // still detect a different or missing package in that directory.
   const manifestPath = findPackageJSON(SDK_PACKAGE, pathToFileURL(join(cwd, "package.json")).href);
   if (!manifestPath) throw new Error(`cannot resolve ${SDK_PACKAGE} from ${cwd}`);
   return realpathSync(join(manifestPath, ".."));
